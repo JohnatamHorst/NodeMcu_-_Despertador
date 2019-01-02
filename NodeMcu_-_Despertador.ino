@@ -3,6 +3,9 @@
 *AUTOR: JOHNATAM RENAN HORST
 *DATA 24/12/2018
 *DESCRISAO:
+* Codigo Criado para funcionar como um Despertador, utilizando um display TFT para nostragem 
+* das horas(obitada via Server NTP), e com um piezoelectric para gerar o alarme!!
+* 
 *
 *
 *****************************************************************************************
