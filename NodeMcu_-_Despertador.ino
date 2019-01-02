@@ -5,17 +5,33 @@
 *DESCRISAO:
 * Codigo Criado para funcionar como um Despertador, utilizando um display TFT para nostragem 
 * das horas(obitada via Server NTP), e com um piezoelectric para gerar o alarme!!
-* 
+*LIGAÇÕES:
 *
+*D1 É LIGADO O BOTÃO DE DESLIGAR O ALARME(LIGAR SABENDO QUE FOI CONFIGURADO COM PULLUP INTERNO)
+*D2 É A SAIDA PARA P PIEZOELETRIC
 *
+*ESP          ILI9341
+*3.3V         (1)VCC 
+*GND          (2)GND
+*GND          (3)CS
+*RESET        (4)RESET
+*D8           (5)DC
+*D7           (6)SDI/MOSI
+*D5           (7)SCK
+*3.3V         (8)LED
+*             (9)"NÃO LIGADO, PINO DO ILI9341 FICA FLUTUANDO"           
+*       
+*       
+*       
 *****************************************************************************************
  */
 #include <TimeLib.h> 
 #include <ESP8266WiFi.h>
-#include <WiFiUdp.h>
+#include <NTP.h>
 #include <Ticker.h>
 #include <SPI.h>
 #include <TFT_eSPI.h> 
+
 
 #define TFT_GREY 0x5AEB
 
@@ -49,11 +65,11 @@ uint8_t           hh            = 0,
 const char*       ssid          = "wifi_Johnatan";   
 const char*       pwd           = "99434266";
 //VARIAVEIS PROTOCOLO UDP
-WiFiUDP           udp;
-unsigned int      localPort     = 8888;
+//WiFiUDP           udp;
+//unsigned int      localPort     = 8888;
 //VARIAVEIS SERVER NTP
-IPAddress         timeServer    (132, 163, 4, 101);
-const int         timeZone      = -2;                //ver horaio de Verão
+//IPAddress         timeServer    (132, 163, 4, 101);
+//const int         timeZone      = -2;                //ver horaio de Verão
 //VARIAVEIS DESPERTADOR
 unsigned int      timeUp[]      = {11,30};       
 boolean           desativate    = true;  
@@ -65,7 +81,8 @@ void              desativateInterrupt();
 void              sendNTPpacket(IPAddress &address);
 time_t            getNtpTime();
                   
-void setup(void){
+void setup(void)
+{
   pinMode(D1,OUTPUT);
   timerSec.attach(1,everySeconds);
   attachInterrupt(D2,desativateInterrupt,RISING);
@@ -73,13 +90,16 @@ void setup(void){
   Serial.begin(115200);
   Serial.println("**********DESPERTADOR***********");
   WiFi.begin(ssid,pwd);
-  while(WiFi.status() != WL_CONNECTED){
+  while(WiFi.status() != WL_CONNECTED)
+  {
     Serial.println(".");
     delay(500);
   }
   Serial.println("Connecting to NTP Server");
-  udp.begin(localPort);
-  setSyncProvider(getNtpTime);
+  //udp.begin(localPort);
+  NTP a(-2);
+  //time_t tempo = a.getNtpTime();
+  setTime(a.getNtpTime());
   hh  = hour();
   mm  = minute();
   ss  = second();
@@ -87,23 +107,18 @@ void setup(void){
 
 }
 
-void loop(){
-
+void loop()
+{
   if(timeUp[0] == hour() && timeUp[1] == minute() && desativate){
     analogWrite(D1,50);  
   }else{
     analogWrite(D1,0);
-  }
-  
+  }  
 }
 
 
-
-
-
-
-
-void desativateInterrupt(){
+void desativateInterrupt()
+{
   desativate = false;
 }
 
@@ -154,21 +169,18 @@ void initDisplay(){
  
 }
 void everySeconds(){
-
   ss++;              // Advance second
     if (ss==60) {
       ss=0;
-      mm++;            // Advance minute
+      mm++;           
       if(mm>59) {
         mm=0;
-        hh++;          // Advance hour
+        hh++;         
         if (hh>23) {
           hh=0;
         }
       }
     }
-
-    // Pre-compute hand degrees, x & y coords for a fast screen update
     sdeg = ss*6;                  // 0-59 -> 0-354
     mdeg = mm*6+sdeg*0.01666667;  // 0-59 -> 0-360 - includes seconds
     hdeg = hh*30+mdeg*0.0833333;  // 0-11 -> 0-360 - includes minutes and seconds
@@ -181,7 +193,6 @@ void everySeconds(){
 
     if (ss==0 || initial) {
       initial = 0;
-      // Erase hour and minute hand positions every minute
       tft.drawLine(ohx, ohy, 120, 121, TFT_BLACK);
       ohx = hx*62+121;    
       ohy = hy*62+121;
@@ -189,8 +200,6 @@ void everySeconds(){
       omx = mx*84+120;    
       omy = my*84+121;
     }
-
-      // Redraw new hand positions, hour and minute hands not erased here to avoid flicker
       tft.drawLine(osx, osy, 120, 121, TFT_BLACK);
       osx = sx*90+121;    
       osy = sy*90+121;
@@ -201,54 +210,5 @@ void everySeconds(){
 
     tft.fillCircle(120, 121, 3, TFT_RED);
 
-}
-const int NTP_PACKET_SIZE = 48; // NTP time is in the first 48 bytes of message
-byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
-
-time_t getNtpTime()
-{
-  while (udp.parsePacket() > 0);
-  Serial.println("Transmit NTP Request");
-  sendNTPpacket(timeServer);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = udp.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      Serial.println("Receive NTP Response");
-      udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      // nesse bytes(40,41,42,43) tem a informação de segundos desde 1900, isso para a time Zone = 0
-      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
-    }
-  }
-  Serial.println("No NTP Response :-(");
-  return 0; 
-}
-
-// send an NTP request to the time server at the given address
-void sendNTPpacket(IPAddress &address){
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12]  = 49;
-  packetBuffer[13]  = 0x4E;
-  packetBuffer[14]  = 49;
-  packetBuffer[15]  = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:                 
-  udp.beginPacket("pool.ntp.br", 123); //NTP requests are to port 123
-  udp.write(packetBuffer, NTP_PACKET_SIZE);
-  udp.endPacket();
 }
 
